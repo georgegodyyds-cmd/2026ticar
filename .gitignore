@@ -1,0 +1,15 @@
+# CCS generated build output
+Debug/
+
+# Local duplicate settings
+.settings - 副本/
+
+# Compiler and linker artifacts
+*.o
+*.obj
+*.out
+*.map
+*.d
+*.d_raw
+*.hex
+*.bin
