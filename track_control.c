@@ -6,9 +6,9 @@
 #include "pid_controller.h"
 
 /* 直边只使用七路红外，PWM修正先滤波再限速，避免左右摆动。 */
-#define EDGE_BASE_PWM                 (470.0f)
-#define LINE_LOST_BASE_PWM            (420.0f)
-#define REACQUIRE_BASE_PWM            (470.0f)
+#define EDGE_BASE_PWM                 (620.0f)
+#define LINE_LOST_BASE_PWM            (520.0f)
+#define REACQUIRE_BASE_PWM            (570.0f)
 #define LINE_KP_NEAR                  (0.10f)
 #define LINE_KP_FAR                   (0.20f)
 #define LINE_KD                       (0.06f)
@@ -22,36 +22,37 @@
 #define LINE_MEDIUM_MIN_PWM           (60.0f)
 #define LINE_LARGE_MIN_PWM            (170.0f)
 #define LINE_SEVERE_MIN_PWM           (210.0f)
-#define EDGE_CORRECTION_LIMIT         (210.0f)
-#define REACQUIRE_CORRECTION_LIMIT    (210.0f)
+#define EDGE_CORRECTION_LIMIT         (250.0f)
+#define REACQUIRE_CORRECTION_LIMIT    (230.0f)
 #define LINE_OUTPUT_RISE_STEP         (20.0f)
 #define LINE_OUTPUT_RELEASE_STEP      (60.0f)
 #define LINE_LOST_SEARCH_PWM          (180.0f)
-#define LINE_GAP_HOLD_COUNT           (12U)
+#define LINE_GAP_HOLD_COUNT           (18U)
 
 /* 只有S4稳定压线后才启用直边角度环，防止MPU锁住偏线位置。 */
-#define EDGE_YAW_KP                    (12.0f)
-#define EDGE_YAW_LIMIT                 (100.0f)
-#define EDGE_YAW_DEADBAND_DEG          (0.3f)
-#define EDGE_YAW_ENABLE_COUNT          (15U)
+#define EDGE_YAW_KP                    (15.0f)
+#define EDGE_YAW_LIMIT                 (145.0f)
+#define EDGE_YAW_DEADBAND_DEG          (0.5f)
+#define EDGE_YAW_ENABLE_COUNT          (8U)
 
 /* 检测到角点后先让轮轴中心到达拐角，再由MPU原地转90度。 */
 #define TURN_APPROACH_PWM             (470.0f)
 #define TURN_APPROACH_COUNT           (18U)
-#define TURN_ANGLE_DEG                (96.0f)
+#define TURN_ANGLE_DEG                (104.0f)
 #define TURN_KP                       (12.0f)
 #define TURN_OUTPUT_LIMIT             (550.0f)
-#define TURN_MIN_PWM                  (300.0f)
-#define TURN_FINE_PWM                 (310.0f)
+#define TURN_MIN_PWM                  (380.0f)
+#define TURN_FINE_PWM                 (380.0f)
 #define TURN_FINE_ZONE_DEG            (8.0f)
-#define TURN_DONE_DEG                 (1.0f)
-#define TURN_DONE_COUNT               (7U)
-#define TURN_TIMEOUT_COUNT            (350U)
+#define TURN_DONE_DEG                 (2.0f)
+#define TURN_DONE_COUNT               (2U)
+#define TURN_MIN_CONTROL_COUNT        (25U)
+#define TURN_TIMEOUT_COUNT            (250U)
 
 /* 连续确认用于过滤数字探头的瞬时跳变。 */
 #define EDGE_ARM_COUNT                (3U)
-#define CORNER_CONFIRM_CENTER_COUNT   (2U)
-#define CORNER_CONFIRM_SIDE_COUNT     (6U)
+#define CORNER_CONFIRM_CENTER_COUNT   (4U)
+#define CORNER_CONFIRM_SIDE_COUNT     (5U)
 #define CORNER_LOCKOUT_COUNT          (15U)
 #define REACQUIRE_CENTER_COUNT        (10U)
 #define CENTER_ERROR_LIMIT            (600)
@@ -228,11 +229,13 @@ static int8_t detect_corner_direction(uint8_t mask, int8_t previous_dir)
 
     /* 左三路或最左两路全黑，直接判定为左直角。 */
     left_corner = (((mask & 0x07U) == 0x07U) ||
-        ((mask & 0x03U) == 0x03U)) ? 1U : 0U;
+        (((mask & 0x03U) == 0x03U) &&
+         ((mask & LINE_MASK_CENTER) != 0U))) ? 1U : 0U;
 
     /* 右三路或最右两路全黑，直接判定为右直角。 */
     right_corner = (((mask & 0x70U) == 0x70U) ||
-        ((mask & 0x60U) == 0x60U)) ? 1U : 0U;
+        (((mask & 0x60U) == 0x60U) &&
+         ((mask & LINE_MASK_CENTER) != 0U))) ? 1U : 0U;
 
     if (left_corner != 0U && right_corner == 0U) {
         return TURN_DIR_LEFT;
@@ -399,36 +402,42 @@ static void finish_turn(void)
 static float turn_control(void)
 {
     float output;
-    float abs_error;
+    float turn_progress;
+    float remaining_angle;
+    float magnitude;
 
-    g_yawError = angle_error_deg(g_yawTarget, g_yawAngle);
-    abs_error = (g_yawError >= 0.0f) ? g_yawError : -g_yawError;
+    /*
+     * 红外决定转向，MPU只测量相对起点已经转过多少度。
+     * 这样不依赖陀螺仪Z轴正负方向与左右转定义是否一致。
+     */
+    turn_progress = angle_error_deg(g_yawAngle, g_turnStartYaw);
+    if (turn_progress < 0.0f) {
+        turn_progress = -turn_progress;
+    }
+    remaining_angle = TURN_ANGLE_DEG - turn_progress;
+    g_yawError = remaining_angle * (float) g_squareTurnDir;
     if (g_turnTimeCount < 65535U) {
         g_turnTimeCount++;
     }
 
-    if (abs_error <= TURN_DONE_DEG) {
-        output = 0.0f;
-        PID_Reset(&g_turnPid);
-        if (g_turnDoneStableCount < TURN_DONE_COUNT) {
-            g_turnDoneStableCount++;
-        }
-    } else {
-        g_turnDoneStableCount = 0U;
-        output = PID_Calculate(&g_turnPid, 0.0f, -g_yawError);
-        output = PID_Clamp(output,
-            -TURN_OUTPUT_LIMIT, TURN_OUTPUT_LIMIT);
-        if (abs_error <= TURN_FINE_ZONE_DEG) {
-            output = (output >= 0.0f) ? TURN_FINE_PWM : -TURN_FINE_PWM;
-        } else if (output > 0.0f && output < TURN_MIN_PWM) {
-            output = TURN_MIN_PWM;
-        } else if (output < 0.0f && output > -TURN_MIN_PWM) {
-            output = -TURN_MIN_PWM;
-        }
+    /* 达到或跨过目标角后立即恢复前进，不再原地等待超时。 */
+    if (g_turnTimeCount >= TURN_MIN_CONTROL_COUNT &&
+        turn_progress >= (TURN_ANGLE_DEG - TURN_DONE_DEG)) {
+        finish_turn();
+        return 0.0f;
     }
 
-    if (g_turnDoneStableCount >= TURN_DONE_COUNT ||
-        g_turnTimeCount >= TURN_TIMEOUT_COUNT) {
+    magnitude = PID_Calculate(&g_turnPid,
+        TURN_ANGLE_DEG, turn_progress);
+    magnitude = PID_Clamp(magnitude, 0.0f, TURN_OUTPUT_LIMIT);
+    if (remaining_angle <= TURN_FINE_ZONE_DEG) {
+        magnitude = TURN_FINE_PWM;
+    } else if (magnitude < TURN_MIN_PWM) {
+        magnitude = TURN_MIN_PWM;
+    }
+    output = (g_squareTurnDir >= 0) ? magnitude : -magnitude;
+
+    if (g_turnTimeCount >= TURN_TIMEOUT_COUNT) {
         finish_turn();
         return 0.0f;
     }
@@ -589,9 +598,11 @@ void TrackControl_Task10ms(void)
                         PID_Reset(&g_edgeYawPid);
                     }
                 } else {
-                    /* 黑线没有压在S4时，只允许红外把车拉回中央。 */
+                    /*
+                     * 偏线时先由红外拉回中央，但保留已经建立的直线角度。
+                     * 回到S4后MPU继续追原目标，避免把偏航后的角度重新记为直线。
+                     */
                     g_lineCenterStableCount = 0U;
-                    g_edgeYawEnabled = 0U;
                     PID_Reset(&g_edgeYawPid);
                 }
             } else if (line.mask == LINE_MASK_ALL_WHITE) {
@@ -633,6 +644,16 @@ void TrackControl_Task10ms(void)
             base_pwm = TURN_APPROACH_PWM;
             correction_pwm = 0.0f;
             g_yawCorrectionPwm = 0.0f;
+            if (g_turnApproachCount == 0U) {
+                /* 靠近拐角后再记录起始角，避免触发瞬间摆动影响转角基准。 */
+                g_turnStartYaw = g_yawAngle;
+                g_yawTarget = normalize_angle_deg(
+                    g_turnStartYaw + g_turnRequestedAngle);
+                g_yawError = angle_error_deg(g_yawTarget, g_yawAngle);
+                g_turnTimeCount = 0U;
+                g_turnDoneStableCount = 0U;
+                PID_Reset(&g_turnPid);
+            }
         } else {
             correction_pwm = turn_control();
             g_yawCorrectionPwm = correction_pwm;

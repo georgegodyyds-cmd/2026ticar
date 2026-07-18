@@ -1,6 +1,8 @@
 #include "car_chassis.h"
+#include "lap_control.h"
 #include "line_sensor.h"
 #include "mpu6050.h"
+#include "serial_screen.h"
 #include "track_control.h"
 #include "ti_msp_dl_config.h"
 
@@ -21,10 +23,16 @@ static void Boot_Blink(uint8_t times)
 
 int main(void)
 {
+    uint8_t lap_command;
+
+    /* 外部降压电源冷启动时先等待电压和NRST稳定。 */
+    delay_cycles(6400000U);
+
     g_bootStage = 1U;
     SYSCFG_DL_init();
 
     g_bootStage = 2U;
+    SerialScreen_Init();
     Boot_Blink(3U);
 
     /*
@@ -45,19 +53,34 @@ int main(void)
 
     g_bootStage = 6U;
     TrackControl_Init();
+    LapControl_Init();
     MPU6050_ResetYaw(0.0f);
     TrackControl_SetMode(TRACK_MODE_AUTO);
+    CarChassis_SetOpenLoopPWM(0.0f, 0.0f);
 
     g_bootStage = 7U;
     while (1) {
+        if (SerialScreen_ConsumeLapCommand(&lap_command) != 0U) {
+            CarChassis_SetOpenLoopPWM(0.0f, 0.0f);
+            MPU6050_ResetYaw(0.0f);
+            TrackControl_SetMode(TRACK_MODE_AUTO);
+            LapControl_Start(lap_command);
+        }
+
         if (CarChassis_Consume10msFlag() != 0U) {
             g_mainLoopTicks++;
             if ((g_mainLoopTicks % 50U) == 0U) {
                 DL_GPIO_togglePins(TEST_PORT, TEST_PIN_0_PIN);
             }
 
-            TrackControl_Task10ms();
-            CarChassis_Task10ms();
+            if (LapControl_IsRunning() != 0U) {
+                TrackControl_Task10ms();
+                if (LapControl_Update(g_squareControlState) != 0U) {
+                    CarChassis_SetOpenLoopPWM(0.0f, 0.0f);
+                }
+            } else {
+                CarChassis_SetOpenLoopPWM(0.0f, 0.0f);
+            }
         }
     }
 }

@@ -25,7 +25,6 @@
 #define MPU6050_REG_GYRO_CONFIG     (0x1BU)
 #define MPU6050_REG_WHO_AM_I        (0x75U)
 #define MPU6050_REG_GYRO_XOUT_H     (0x43U)
-#define MPU6050_REG_GYRO_ZOUT_H     (0x47U)
 
 #define MPU6050_WHO_AM_I_VALUE      (0x68U)
 #define MPU6050_GYRO_SCALE_250DPS   (131.0f)
@@ -213,20 +212,6 @@ static uint8_t MPU6050_ReadRegs(uint8_t reg, uint8_t *buffer, uint8_t len)
     if (I2C_CheckNoError() == 0U) {
         return 0U;
     }
-    return 1U;
-}
-
-static uint8_t MPU6050_ReadGyroZ(float *gyro_z_dps)
-{
-    uint8_t data[2];
-    int16_t raw_z;
-
-    if (MPU6050_ReadRegs(MPU6050_REG_GYRO_ZOUT_H, data, 2U) == 0U) {
-        return 0U;
-    }
-
-    raw_z = (int16_t) (((uint16_t) data[0] << 8) | data[1]);
-    *gyro_z_dps = (float) raw_z / MPU6050_GYRO_SCALE_250DPS;
     return 1U;
 }
 
