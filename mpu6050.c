@@ -340,12 +340,6 @@ void MPU6050_Task10ms(void)
         return;
     }
     g_mpuLastReadOk = 1U;
-    (void) MPU6050_ReadRegs(MPU6050_REG_WHO_AM_I,
-        (uint8_t *) &g_mpuRuntimeWhoAmI, 1U);
-    (void) MPU6050_ReadRegs(MPU6050_REG_PWR_MGMT_1,
-        (uint8_t *) &g_mpuRuntimePwrMgmt1, 1U);
-    (void) MPU6050_ReadRegs(MPU6050_REG_GYRO_CONFIG,
-        (uint8_t *) &g_mpuRuntimeGyroConfig, 1U);
     g_mpuReadCount++;
     g_gyroXRaw = gyro_x;
     g_gyroYRaw = gyro_y;

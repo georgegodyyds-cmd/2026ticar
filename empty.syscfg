@@ -15,7 +15,6 @@ const GPIO2  = GPIO.addInstance();
 const GPIO3  = GPIO.addInstance();
 const GPIO4  = GPIO.addInstance();
 const GPIO5  = GPIO.addInstance();
-const GPIO10 = GPIO.addInstance();
 const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const PWM1   = PWM.addInstance();
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
@@ -52,11 +51,6 @@ GPIO5.associatedPins[0].$name        = "STAYBY";
 GPIO5.associatedPins[0].assignedPort = "PORTB";
 GPIO5.associatedPins[0].assignedPin  = "0";
 
-GPIO10.$name                          = "TEST";
-GPIO10.associatedPins[0].$name        = "PIN_0";
-GPIO10.associatedPins[0].assignedPort = "PORTB";
-GPIO10.associatedPins[0].assignedPin  = "6";
-
 PWM1.$name               = "PWM_0";
 PWM1.timerCount          = 3200;
 PWM1.pwmMode             = "EDGE_ALIGN_UP";
@@ -89,7 +83,6 @@ GPIO2.associatedPins[0].pin.$suggestSolution  = "PB2";
 GPIO3.associatedPins[0].pin.$suggestSolution  = "PB3";
 GPIO4.associatedPins[0].pin.$suggestSolution  = "PB4";
 GPIO5.associatedPins[0].pin.$suggestSolution  = "PB0";
-GPIO10.associatedPins[0].pin.$suggestSolution = "PB6";
 PWM1.peripheral.ccp0Pin.$suggestSolution      = "PA12";
 PWM1.peripheral.ccp1Pin.$suggestSolution      = "PA13";
 SYSCTL.peripheral.$suggestSolution            = "SYSCTL";

@@ -6,26 +6,26 @@
  * 7 路灰度红外传感器引脚分配，按车头从左到右。
  * 这些脚都在你图里右侧两排排针上，并避开已有电机/PWM/编码器接线：
  *   S1 -> PB12  S2 -> PB17  S3 -> PB8   S4 -> PB7
- *   S5 -> PB13  S6 -> PB13  S7 -> PB20
+ *   S5 -> PB13  S6 -> PB6   S7 -> PB20
  *
  * 这里按“数字量输出”模块处理，bit0=S1最左，bit6=S7最右。
  * 如果你的模块黑线输出低电平，把 LINE_SENSOR_BLACK_IS_HIGH 改成 0。
  */
 #define LINE_SENSOR_ENABLE          (1U)
 #define LINE_SENSOR_BLACK_IS_HIGH   (1U)
-#define LINE_SENSOR_RIGHT12_TIED    (1U)
+#define LINE_SENSOR_RIGHT12_TIED    (0U)
 
 #define LINE_S1_IOMUX               (IOMUX_PINCM29)
 #define LINE_S2_IOMUX               (IOMUX_PINCM43)
 #define LINE_S3_IOMUX               (IOMUX_PINCM25)
 #define LINE_S4_IOMUX               (IOMUX_PINCM24)
 #define LINE_S5_IOMUX               (IOMUX_PINCM30)
-#define LINE_S6_IOMUX               (IOMUX_PINCM30)
+#define LINE_S6_IOMUX               (IOMUX_PINCM23)
 #define LINE_S7_IOMUX               (IOMUX_PINCM48)
 #define LINE_SENSOR_GPIO_PORT       (GPIOB)
 #define LINE_SENSOR_GPIO_MASK       (DL_GPIO_PIN_12 | DL_GPIO_PIN_17 | \
                                      DL_GPIO_PIN_8 | DL_GPIO_PIN_7 | \
-                                     DL_GPIO_PIN_13 | \
+                                     DL_GPIO_PIN_13 | DL_GPIO_PIN_6 | \
                                      DL_GPIO_PIN_20)
 
 volatile uint8_t g_lineMask = 0;
@@ -56,8 +56,11 @@ static uint8_t LineSensor_ReadDigitalRaw(void)
         mask |= (1U << 3);
     }
     if ((pins & DL_GPIO_PIN_13) != 0U) {
-        /* PCB上第5、第6路共用PB13，因此两个逻辑位同步。 */
-        mask |= (1U << 4) | (1U << 5);
+        /* 新PCB的第5路独立接PB13。 */
+        mask |= (1U << 4);
+    }
+    if ((pins & DL_GPIO_PIN_6) != 0U) {
+        mask |= (1U << 5);
     }
     if ((pins & DL_GPIO_PIN_20) != 0U) {
         mask |= (1U << 6);

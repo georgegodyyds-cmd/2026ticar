@@ -24,6 +24,7 @@ extern volatile int8_t g_squareTurnDir;
 extern volatile uint8_t g_squareCornerMask;
 extern volatile uint8_t g_squareControlState;
 extern volatile float g_lineCorrectionPwm;
+extern volatile float g_lineIntegralPwm;
 extern volatile float g_yawCorrectionPwm;
 extern volatile uint8_t g_cornerStableCount;
 extern volatile uint8_t g_turnDoneStableCount;
